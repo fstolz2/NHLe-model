@@ -57,5 +57,18 @@ print(df[["name", "team_code", "season_name", "games_played", "goals", "points"]
 
 conn = sqlite3.connect("hockey.db")
 df.to_sql("ohl_skaters", conn, if_exists="replace", index=False)
+
+
+query = """
+SELECT name, team_code, season_name, games_played, goals, assists, points,
+    ROUND(CAST(points AS REAL) / games_played, 2) AS ppg
+FROM ohl_skaters
+WHERE games_played >= 10
+    AND season_name = '2025-26 Regular Season'
+ORDER BY points DESC
+LIMIT 50
+"""
+print(pd.read_sql(query, conn))
+
 conn.close()
 print("Saved", len(df), "rows to ohl_skaters")
