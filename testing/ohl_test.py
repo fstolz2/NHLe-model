@@ -20,7 +20,7 @@ seasons = get_json({"feed": "modulekit", "view": "seasons", "key": KEY,
 seasons = pd.DataFrame(seasons["SiteKit"]["Seasons"])
 seasons["season_id"] = seasons["season_id"].astype(int)
 regular = seasons[seasons["season_name"].str.contains("Regular Season")
-                  & (seasons["season_id"] >= 42)]
+                    & (seasons["season_id"] >= 11)]
 
 # --- Pull skater stats for each season ---
 all_rows = []

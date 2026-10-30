@@ -25,7 +25,7 @@ def get_json(url, params=None, tries=5):
 STATS_URL = "https://api.nhle.com/stats/rest/en/skater/summary"
 player_ids = set()
 
-for year in range(2011, 2026):
+for year in range(2000, 2026):
     season = int(f"{year}{year + 1}")          # e.g. 20112012
     start = 0
     while True:
@@ -53,7 +53,7 @@ for i, pid in enumerate(sorted(player_ids)):
 
     name = f'{p["firstName"]["default"]} {p["lastName"]["default"]}'
     for s in p.get("seasonTotals", []):
-        if s["gameTypeId"] == 2 and s["leagueAbbrev"] in ("OHL", "NHL"):
+        if s["gameTypeId"] == 2:
             rows.append({
                 "player_id": pid,
                 "name": name,
@@ -78,7 +78,7 @@ df.to_sql("career_seasons", conn, if_exists="replace", index=False)
 
 query = """
 WITH ohl AS (
-    SELECT player_id, name, season, SUM(gp) AS gp, SUM(points) AS pts
+    SELECT player_id, name, position, season, SUM(gp) AS gp, SUM(points) AS pts
     FROM career_seasons WHERE league = 'OHL'
     GROUP BY player_id, season
 ),
@@ -87,19 +87,29 @@ nhl AS (
     FROM career_seasons WHERE league = 'NHL'
     GROUP BY player_id, season
 )
-SELECT o.name, o.season AS ohl_season,
+SELECT o.player_id, o.name, o.position, o.season AS ohl_season,
        o.gp AS ohl_gp, o.pts AS ohl_pts,
-       ROUND(CAST(o.pts AS REAL) / o.gp, 2) AS ohl_ppg,
-       n.gp AS nhl_gp, n.pts AS nhl_pts,
-       ROUND(CAST(n.pts AS REAL) / n.gp, 2) AS nhl_ppg
+       n.gp AS nhl_gp, n.pts AS nhl_pts
 FROM ohl o
 JOIN nhl n
   ON o.player_id = n.player_id
  AND n.season = o.season + 10001
 WHERE o.gp >= 20 AND n.gp >= 20
-ORDER BY ohl_ppg DESC
 """
-print(pd.read_sql(query, conn))
+pairs = pd.read_sql(query, conn)
+pairs["ohl_ppg"] = pairs["ohl_pts"] / pairs["ohl_gp"]
+pairs["nhl_ppg"] = pairs["nhl_pts"] / pairs["nhl_gp"]
 
-conn.close()
-print("Saved", len(df), "rows to career_seasons")
+def nhle(df):
+    """Pooled factor: total NHL PPG divided by total OHL PPG."""
+    return (df["nhl_pts"].sum() / df["nhl_gp"].sum()) / (df["ohl_pts"].sum() / df["ohl_gp"].sum())
+
+print("Players in sample:", len(pairs))
+print("OHL NHLe:", round(nhle(pairs), 3))
+
+# Forwards vs defense
+pairs["pos_group"] = pairs["position"].map(lambda p: "D" if p == "D" else "F")
+print(pairs.groupby("pos_group").apply(nhle).round(3))
+
+# Stability by season
+print(pairs.groupby("ohl_season").apply(nhle).round(3))
